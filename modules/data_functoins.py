@@ -1,14 +1,25 @@
-import time
-import os
-import requests
-from dotenv import load_dotenv
+from datetime import datetime
+from sqlite3 import Timestamp
 import urllib.parse
 import hashlib
 import hmac
 import base64
+import time
+import os
+import requests
 import datetime
 
+
+
+from dotenv import load_dotenv
+
 load_dotenv()
+
+
+buy_price = 0
+sell_price = 0
+first_time = 0
+
 
 # Read Kraken API key and secret stored in environment variables
 api_url = "https://api.kraken.com"
@@ -22,6 +33,7 @@ def get_kraken_signature(urlpath, data, secret):
     mac = hmac.new(base64.b64decode(secret), message, hashlib.sha512)
     sigdigest = base64.b64encode(mac.digest())
     return sigdigest.decode()
+
 
 # Attaches auth headers and returns results of a POST request
 def kraken_request(uri_path, data, api_key, api_sec):
@@ -56,63 +68,80 @@ def get_usdt_balance(api_key, api_sec):
     return data.get('USDT')
 
 def get_price_BTC():
-    resp = requests.get('https://api.kraken.com/0/public/Ticker?pair=XBTUSD')
+    resp = requests.get('https://api.kraken.com/0/public/Ticker?pair=XBTUSDT')
     data = resp.json().get('result')
-    prices = data.get('XXBTZUSD')
+    prices = data.get('XBTUSDT')
     price = prices.get('a')
     return price[0]
 
 def get_volume_BTC():
-    resp = requests.get('https://api.kraken.com/0/public/Ticker?pair=XBTUSD')
+    resp = requests.get('https://api.kraken.com/0/public/Ticker?pair=XBTUSDT')
     data = resp.json().get('result')
-    volumes = data.get('XXBTZUSD')
+    volumes = data.get('XBTUSDT')
     volume = volumes.get('v')
     return volume[0]
 
-def get_triller_volume_BTC_10days():
+def get_triller_volume_BTC_10mins():
     time_now = server_time()
-    time_now = time_now - 950400
-    resp = requests.get('https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1440&since='+str(time_now))
+    time_now = time_now - 600
+    resp = requests.get('https://api.kraken.com/0/public/OHLC?pair=XBTUSDT&interval=1&since='+str(time_now))
     data = resp.json().get('result')
-    volumes = data.get('XXBTZUSD')
+    volumes = data.get('XBTUSDT')
     y=0
     x=1;
-    days = []
+    mins = []
     volume = []
-    triller_volume = 0.0;
-    
-    while x <= 10:
+    triller_volume = 0.0
+
+    while x <= 9:
         volume.append(volumes[x][6])
-        days.append(volumes[x][0])
-        times = datetime.datetime.fromtimestamp(days[y])
+        mins.append(volumes[x][0])    
         triller_volume = triller_volume + float(volume[y])
         y = y + 1
         x = x + 1
     return round(triller_volume/10,2)
-   
- 
+
+def get_volume_by_mins(priceBTC):
+    time_now = server_time()
+    time_now = time_now - 60
+    #print(datetime.datetime.fromtimestamp(time_now))
+    resp = requests.get('https://api.kraken.com/0/public/OHLC?pair=XBTUSDT&interval=1&since='+str(time_now))
+    data = resp.json().get('result')
+    volumes = data.get('XBTUSDT')
     
-#SHOW DATA
-def show_data():
-    btc_balance = float(get_btc_balance(api_key, api_sec))
-    usdt_balance = float(get_usdt_balance(api_key, api_sec))
-    price_btc = float(get_price_BTC())
-    volume_btc = float(get_volume_BTC())
-    print("\n\n")
-    print("-USER & BTCUSD DATA-")
-    print("____________________\n\n")
-
-    print("BTC Balance: ",round(btc_balance,2))
-    print("USDT Balance: ",round(usdt_balance,2))
-    print("BTC price: ", round(price_btc,2))
-    print("BTC volume: ", round(volume_btc,2))
-    print("BTC Climatic Vol: ", get_triller_volume_BTC_10days())
-    print("\n\n")
+    return round(float(volumes[0][6])*priceBTC,2)
 
 
+def test_operation(priceBTC,counter, balance):
+    global first_time, sell_price, buy_price
+    print("INFO---------")
+    print("Counter: ",counter)
+    print("Price BTC: ", priceBTC)
+    print("Balance: ", balance)
+    if first_time == 0:
+        print("COMPRA en el", priceBTC)
+        buy_price = priceBTC
+        balance_average = 0
+        first_time = 1
+    else:
+        if counter%2 == 0:
+            print("COMPRA en el", priceBTC)
+            balance_average = ((sell_price-priceBTC)/sell_price)*100
+            print("Average: ",round(balance_average,2),"%")
+            
+            buy_price = priceBTC
+        else:
+            print("VENTA en el", priceBTC)
+            balance_average = -((buy_price-priceBTC)/buy_price)*100
+            print("Average: ",round(balance_average,2),"%")
+            
+            sell_price = priceBTC
+    
+    balance = balance + ((balance*balance_average)/100)
+    print("Final Balance: ",round(balance,2))
+    time.sleep(60)
+    return balance
 
-#MAIN
-show_data()
 
 
 
